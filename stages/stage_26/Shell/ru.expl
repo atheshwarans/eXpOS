@@ -1,0 +1,34 @@
+int main()
+{
+    decl
+        int temp;
+        str uname;
+		str curUname;
+		int i;
+		int fd;
+		str fname;
+		str tempstr;
+    enddecl
+    begin
+		write("--Uname--");
+		read(uname);
+		i = 0;
+		fd = exposcall("Open", "root");
+		while( i < 60 ) do
+			temp = exposcall("Read", fd, fname);
+			temp = exposcall("Read", fd, tempstr);
+			temp = exposcall("Read", fd, tempstr);
+			temp = exposcall("Read", fd, curUname);
+			temp = exposcall("Seek", fd, 3);
+
+			if( curUname == uname ) then
+				temp = exposcall("Delete", fname);
+				write("Deleted");
+			endif;
+			i = i + 1;
+		endwhile;
+        return 0;
+    end
+}
+
+

@@ -1,0 +1,90 @@
+//int 17 - Login system call
+//can only be called from Login process (pid=1)(init process)
+//arguments: User name, password
+//returns: 0 if successful, -1 if invalid user name or password, -2 if permission denied
+
+//some variables
+alias currentPID R4;
+alias currentPTE R5;
+alias userSP R6;
+
+currentPID = [SYSTEM_STATUS_TABLE + 1];
+currentPTE = PROCESS_TABLE + currentPID * 16;
+userSP = SP;
+
+//set mode flag to sys call number = 27
+[currentPTE + 9] = 27;
+
+//swith to kernel stack
+[currentPTE + 13] = SP;
+SP = [currentPTE + 11]*512 -1;
+
+if( (currentPID != 1) ) then
+	//return -2: permission denied
+	//login process can only call this sys call
+	[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -2;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+
+//get the arguments from the stack
+alias userName R7;
+alias password R8;
+userName = [ [PTBR + ( (userSP-4) / 512) * 2] * 512 + (userSP - 4) % 512];
+password = [ [PTBR + ( (userSP-3) / 512) * 2] * 512 + (userSP - 3) % 512];
+
+//get the user table entry corresponding to the user name
+alias userTableEntry R9;
+alias userID R10;
+userID = 0;
+
+while( (userID < MAX_USER_NUM) ) do
+	userTableEntry = USER_TABLE + userID * 2;
+	if( (userName == [userTableEntry]) ) then
+		break;
+	endif;
+	userID = userID + 1;
+endwhile;
+
+alias encryptedPassword R11;
+encryptedPassword = password;
+encrypt encryptedPassword;
+//if user name not found
+if( (userID == MAX_USER_NUM) || (encryptedPassword != [userTableEntry + 1]) ) then
+	//return -1: invalid user name or invalid password
+	[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -1;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+
+//we are here means the user name and password are valid
+
+//activating the shell process
+[PROCESS_TABLE + 2*16 + 4] = CREATED;
+[PROCESS_TABLE + 2*16 + 3] = userID;
+
+//shell process is conceptually a child of the login process
+//but now fork relation
+//set parent process id of shell = login process id
+[PROCESS_TABLE + 2*16 + 2] = 1;
+
+//set the login process to a wait state for the shell to finish
+[currentPTE + 4] = WAIT_PROCESS;
+[currentPTE + 5] = 2;
+
+//set the sys status table current user id to the user id
+[SYSTEM_STATUS_TABLE + 0] = userID;
+
+//call the context switch module
+backup;
+call SCHEDULER;
+restore;
+//print "sched ret";
+
+//rest the mode flag and restore the SP to user stack
+[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = 0;
+[currentPTE + 9] = 0;
+SP = [currentPTE + 13];
+ireturn;

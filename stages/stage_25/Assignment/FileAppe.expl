@@ -1,0 +1,33 @@
+int main()
+{
+    decl
+        str fileName,word;
+        int fileDesc,iter,temp,temp1;
+    enddecl
+    begin
+        read(fileName);
+        fileDesc = exposcall("Open",fileName);
+        temp = exposcall("Seek",fileDesc,2049);
+        iter = 2000;
+        while (iter <= 2513) do
+            temp = exposcall("Write",fileDesc,iter);
+            iter = iter + 1;    
+        endwhile;
+        temp = exposcall("Seek",fileDesc,-1);
+        temp = exposcall("Read",fileDesc,word);
+        //temp1 = exposcall("Seek",fileDesc,-1);
+        while (temp != -2) do
+            write(word);
+            if (word == "1") then
+                break;
+            endif;
+            temp = exposcall("Seek",fileDesc,-1);
+            temp = exposcall("Seek",fileDesc,-1);
+            temp = exposcall("Read",fileDesc,word);
+        endwhile;
+        temp = exposcall("Close",fileDesc);
+        return 0;
+    end
+
+
+}

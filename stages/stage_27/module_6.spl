@@ -1,0 +1,219 @@
+//readme
+//pager module
+//function no	name		arguments
+//	1					swap out	 Nil
+//	2					swap in	 	 Nil
+
+alias functionNum R1;
+
+//swap out
+if( functionNum == 1 ) then
+	//print "Swapoutinit";
+	//find the process to be swapped out
+	alias swap_pid R6;
+	swap_pid = -1;
+	alias i R7;
+	
+	//loop to check if non swapped process exists in wait process state
+	i = 3;
+	while( i < MAX_PROC_NUM - 1 ) do
+		if( [PROCESS_TABLE + i*16 + 1] != -1 && [PROCESS_TABLE + i*16 + 6] == 0 &&  [PROCESS_TABLE + i*16 + 4] == WAIT_PROCESS) then
+			swap_pid = i;
+			break;
+		endif;
+		i = i + 1;
+	endwhile;
+		
+	if ( i == MAX_PROC_NUM - 1) then
+		//we reach here only if we are not able to find any non swapped process in wait process state
+		//loop to check if non swapped process exists in wait semaphore state
+		i = 3;
+		while( i < MAX_PROC_NUM - 1 ) do
+			if( [PROCESS_TABLE + i*16 + 1] != -1 && [PROCESS_TABLE + i*16 + 6] == 0 &&  [PROCESS_TABLE + i*16 + 4] == WAIT_SEMAPHORE) then
+				swap_pid = i;
+				break;
+			endif;
+			i = i + 1;
+		endwhile;
+		
+		if ( i == MAX_PROC_NUM - 1 ) then
+			//we reach here only if we are not able to find any non swapped process either in wait process or wait semaphore state
+			
+			alias max R8;
+			max = -1;
+			
+			//loop to find max tick valued processes which are not running, terminated, allocated or swapped out
+			i=3;
+			while( i < MAX_PROC_NUM - 1) do
+				if( [PROCESS_TABLE + i*16 + 1] != -1 && [PROCESS_TABLE + i*16 + 6] == 0 && [PROCESS_TABLE + i*16 + 4] != RUNNING && [PROCESS_TABLE + i*16 + 4] != TERMINATED && [PROCESS_TABLE + i*16 + 4] != ALLOCATED ) then
+					if( max == -1 ) then
+						max = i;
+						swap_pid = max;
+					else
+						if( [PROCESS_TABLE + max*16] < [PROCESS_TABLE + i*16] ) then
+							max = i;
+							swap_pid = max;
+						endif;
+					endif;
+				endif;
+				i = i + 1;
+			endwhile;
+		endif;
+	endif;
+	
+	if ( swap_pid == -1 ) then
+		[SYSTEM_STATUS_TABLE + 5] = 0;
+		return;
+	endif;
+	
+	//making tick of the process to be swapped to 0
+	[PROCESS_TABLE + swap_pid * 16] = 0;
+	//print swap_pid;
+//for each heap page that is not shared and is valid store it
+	i = 2;
+	while( i < 10 ) do
+		//print "iter start";
+		//breakpoint;
+		if ( [PAGE_TABLE_BASE + swap_pid*20 + i*2] != -1 && [MEMORY_FREE_LIST + [PAGE_TABLE_BASE + swap_pid*20 + i*2] ] == 1 ) then
+			//call get swap block from memory manager
+			multipush(R6,R7,R8);
+			R1 = GET_SWAP_BLOCK;
+			call MOD_2;
+			multipop(R6,R7,R8);
+			//print "got swap block";
+			
+			//storing the heap page to disk
+			multipush(R0,R6,R7,R8);
+			R1 = DISK_STORE;
+			R2 = [SYSTEM_STATUS_TABLE + 1];
+			R3 = [PAGE_TABLE_BASE + swap_pid*20 + i*2];
+			R4 = R0;
+			call MOD_4;
+			multipop(R0,R6,R7,R8);
+			//print "Disk stored";
+			
+			//call release page from memory manager
+			multipush(R0,R6,R7,R8);
+			R1 = RELEASE_PAGE;
+			R2 = [PAGE_TABLE_BASE + swap_pid*20 + i*2];
+			call MOD_2;
+			multipop(R0,R6,R7,R8);
+			//print "page released";
+			
+			//updating the disk map table entry of process to store disk block number allocated to heap page
+			[DISK_MAP_TABLE + swap_pid*10 + i] = R0;
+			
+			//invalidating page table of heap page
+			[PAGE_TABLE_BASE + 20*swap_pid + i*2] = -1;
+			[PAGE_TABLE_BASE + 20*swap_pid + i*2 + 1] = "0000";
+			
+		endif;
+
+		i = i + 1;
+		if (i == 4) then
+			i=8;
+		endif;
+		//print "itercomplete";
+	endwhile;	
+	
+	
+	//set swap flag to 1
+	[PROCESS_TABLE + swap_pid*16 + 6] = 1;
+
+	//increment the swap count
+	[SYSTEM_STATUS_TABLE + 4] = [SYSTEM_STATUS_TABLE + 4] + 1;
+	//set paging status to 0
+	[SYSTEM_STATUS_TABLE + 5] = 0;
+	//print "swapoutexit";
+	return;
+endif;
+
+//swap in
+if( functionNum == 2 ) then
+	//find the process to be swapped in
+	//print "swapininit";
+	alias found R6;
+	found = 0;
+	alias i R7;
+	i = 3;
+	alias max R8;
+	max = -1;
+	while( i < MAX_PROC_NUM - 1 ) do
+		if( [PROCESS_TABLE + i*16 + 6] == 1 && ([PROCESS_TABLE + i*16 + 4] == READY || [PROCESS_TABLE + i*16 + 4] == CREATED) ) then
+			if( max == -1 ) then
+				max = i;
+				found = 1;
+			else
+				if( [PROCESS_TABLE + max*16] < [PROCESS_TABLE + i*16] ) then
+					max = i;
+					found = 1;
+				endif;
+			endif;
+		endif;
+		i = i + 1;
+	endwhile;
+	if( found == 0 ) then
+		[SYSTEM_STATUS_TABLE + 5] = 0;
+		return;
+	endif;
+
+	[PROCESS_TABLE + max*16] = 0;
+	//print "foundswapin";
+	//print max;
+
+	//for each heap pages load it back
+	i = 2;
+	while(i < 10) do
+		if( [DISK_MAP_TABLE + 10*max +i] != -1) then
+			//call get free page from memory manager
+			multipush(R7,R8);
+			R1 = GET_FREE_PAGE;
+			call MOD_2;
+			multipop(R7,R8);
+			[PAGE_TABLE_BASE + max*20 + i*2] = R0;
+			//print "gotFreePage";
+
+			alias diskBlock R9;
+			diskBlock = [DISK_MAP_TABLE + 10*max + i];
+
+			//do the disk load fun of device manager module
+			backup;
+			R1 = DISK_LOAD;
+			R2 = [SYSTEM_STATUS_TABLE + 1];
+			R3 = [PAGE_TABLE_BASE + max*20 + i*2];
+			R4 = diskBlock;
+			call MOD_4;
+			restore;
+			//print "diskloaded";
+
+			//release the block that had the swaped out heap page
+			//release_block() fun of memory manager module
+			backup;
+			R1 = RELEASE_BLOCK;
+			R2 = diskBlock;
+			R3 = max;
+			call MOD_2;
+			restore;
+			//print "block released";
+
+			[PAGE_TABLE_BASE + 20*max + i*2 + 1] = "0110";
+			[DISK_MAP_TABLE + max*10 + i] = -1;
+		endif;
+		i = i + 1;
+		if (i == 4) then
+			i = 8;
+		endif;
+	endwhile;
+
+	
+	//set swap flag to 0
+	[PROCESS_TABLE + max*16 + 6] = 0;
+
+	//decrement the swap count
+	[SYSTEM_STATUS_TABLE + 4] = [SYSTEM_STATUS_TABLE + 4] - 1;
+	//set paging status to 0
+	[SYSTEM_STATUS_TABLE + 5] = 0;
+	//print "swapinexit";
+	//breakpoint;
+	return;
+endif;

@@ -1,0 +1,288 @@
+//int 16: Newusr(22), Remusr(23), Setpwd(24), Getuname(25), Getuid(26)
+//some variables
+alias currentPID R4;
+alias currentPTE R5;
+alias userSP R6;
+alias ret R15;
+
+currentPID = [SYSTEM_STATUS_TABLE + 1];
+currentPTE = PROCESS_TABLE + currentPID * 16;
+userSP = SP;
+
+//switch to kernel stack
+[currentPTE + 13] = SP;
+SP = [currentPTE + 11] * 512 - 1;
+
+alias SystemCallNum R7;
+SystemCallNum = [[PTBR + ( (userSP-5) / 512 ) * 2] * 512 + (userSP - 5) % 512 ];
+
+ret = [PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ;
+
+//Newusr-------------------------------------------------------------------------------
+if( (SystemCallNum == 22) ) then
+	//set mode flag to sys call num
+	[currentPTE + 9] = 22;
+
+	//arguments: user name, password
+	//return: 0 success, -1 user already exists, -2 permission denied, -3 user limit reached
+	alias userName R8;
+	alias userPwd R9;
+	//alias encryptedPwd R10;
+	//get arguments
+	userName = [[PTBR + ( (userSP-4) / 512 ) * 2] * 512 + (userSP - 4) % 512 ];
+	userPwd = [[PTBR + ( (userSP-3) / 512 ) * 2] * 512 + (userSP - 3) % 512 ];
+	//encryptedPwd = userPwd;
+	encrypt userPwd;
+
+	if( ([SYSTEM_STATUS_TABLE + 0] != 1) || (currentPID != 2) ) then
+		//user not root or not shell process
+		//permission denied
+		//return -2
+		//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -2;
+		[ret] = -2;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+
+	
+	alias i R11;
+	i = 0;
+	while( i < MAX_USER_NUM ) do
+		if( ([USER_TABLE + i*2] == userName) ) then
+			//user already exists
+			//return -1
+			//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -1;
+			[ret] = -1;
+			[currentPTE + 9] = 0;
+			SP = [currentPTE + 13];
+			ireturn;
+		endif;
+
+		i = i + 1;
+	endwhile;
+
+	i = 0;
+	while( i < MAX_USER_NUM ) do
+		if( ([USER_TABLE + i*2] == -1) ) then
+			break;
+		endif;
+		i = i + 1;
+	endwhile;
+
+	//no free user slot
+	if( i == MAX_USER_NUM ) then
+		//user limit reached
+		//return -3
+		//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -3;
+		[ret] = -3;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+
+	//we are here means we found a slot for the new user
+	[USER_TABLE + i*2] = userName;
+	[USER_TABLE + i*2 + 1] = userPwd;
+
+	//return success
+	//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = 0;
+	[ret] = 0;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+//over-Newusr-------------------------------------------------------------------------------
+
+//Remusr-------------------------------------------------------------------------------
+if( (SystemCallNum == 23) ) then
+	//arguments: user name
+
+	alias userName R7;
+	alias userid R8;
+	alias inodeInd R9;
+	
+	//get username from stack
+	userName = [[PTBR + ( (userSP-4) / 512 ) * 2] * 512 + (userSP - 4) % 512 ];
+	
+	// check if sys call invoked from shell of root and user to be removed is not root or kernel
+	if (currentPID == 2 && [currentPTE + 3] == 1 && userName != "root" && userName != "kernel") then
+		userid = 2;
+		while (userid < 16) do
+			if ([ USER_TABLE + userid * 2 ] == userName) then
+			
+				inodeInd = 1;
+				while (inodeInd < 60) do
+					if ([INODE_TABLE + inodeInd * 16 + 1 ] != -1 && [ INODE_TABLE + inodeInd * 16 + 3 ] == userid) then
+						//File corresponding to this particular inodeInd is owned by given user
+						//return -3: Undeleted files exist for the user	
+						//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -3;
+						[ret] = -3;
+						[currentPTE + 9] = 0;
+						SP = [currentPTE + 13];
+						ireturn;
+					endif;
+					inodeInd = inodeInd + 1;
+				endwhile;
+				
+				//we are here means there is a userid matching the given username and the given user is not the owner of any file
+				[ USER_TABLE + userid * 2 ] = -1;
+				[ USER_TABLE + userid * 2 + 1] = -1;
+				
+				//return 0 indicating success
+				//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = 0;
+				[ret] = 0;
+				[currentPTE + 9] = 0;
+				SP = [currentPTE + 13];
+				ireturn;
+			endif;
+			userid = userid + 1;
+		endwhile;
+		
+		// we are here means there is no user with the given username
+		// return -1: user does not exist
+		//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -1;
+		[ret] = -1;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+				
+	else
+		//return -2: permission denied
+		//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -2;
+		[ret] = -2;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;	
+	endif;
+endif;
+//over-Remusr-------------------------------------------------------------------------------
+
+
+//Setpwd-------------------------------------------------------------------------------
+if( (SystemCallNum == 24) ) then
+	//set mode flag to sys call num
+	[currentPTE + 9] = 24;
+
+	//arguments: user name, newPassword
+	//return: 0 success, -1 unauthorised attempt, -2 user not found
+	alias userName R8;
+	alias userPwd R9;
+	//alias encryptedPwd R10;
+	//get arguments
+	userName = [[PTBR + ( (userSP-4) / 512 ) * 2] * 512 + (userSP - 4) % 512 ];
+	userPwd = [[PTBR + ( (userSP-3) / 512 ) * 2] * 512 + (userSP - 3) % 512 ];
+	//encryptedPwd = userPwd;
+	encrypt userPwd;
+
+	if( currentPID != 2 ) then
+		//not shell process
+		//permission denied
+		//return -1
+		//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -1;
+		[ret] = -1;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+
+	alias i R11;
+	i = 0;
+	while( i < MAX_USER_NUM ) do
+		if( ([USER_TABLE + i*2] == userName) ) then
+			break;
+		endif;
+		i = i + 1;
+	endwhile;
+
+	if( i == MAX_USER_NUM ) then
+		//user not found
+		//return -2
+		//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -2;
+		[ret] = -2;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+
+	if( ([SYSTEM_STATUS_TABLE + 0] != 1) && ([SYSTEM_STATUS_TABLE + 0] != i) ) then
+		//not root or not user's own password
+		//permission denied
+		//return -1
+		//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = -1;
+		[ret] = -1;
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+
+	//we are here means we can change the password
+	[USER_TABLE + i*2 + 1] = userPwd;
+
+	//return success
+	//[[PTBR + ( (userSP-1) / 512 ) * 2] * 512 + (userSP - 1) % 512 ] = 0;
+	[ret] = 0;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+//over-Setpwd-------------------------------------------------------------------------------
+
+//Getuname-------------------------------------------------------------------------------
+if( (SystemCallNum == 25) ) then
+	//arguments: userid
+
+	[currentPTE + 9] = 25;
+
+	//get the userid from the stack
+	alias userid R8;
+	userid = [[PTBR + ( (userSP-4) / 512 ) * 2] * 512 + (userSP - 4) % 512 ];
+	
+	if ( userid >= 0 && userid < 16 ) then
+		//as userid is valid return username corresponding to userid
+		//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = [USER_TABLE + userid * 2];
+		[ret] = [USER_TABLE + userid * 2];
+		//print [ret];
+		[currentPTE + 9] = 0;
+		SP = [currentPTE + 13];
+		ireturn;
+	endif;
+	
+	//return -1: invalid userid
+	//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -1;
+	[ret] = -1;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+//over-Getuname-------------------------------------------------------------------------------
+
+//Getuid-------------------------------------------------------------------------------
+if( (SystemCallNum == 26) ) then
+	//arguments: user name
+	
+	//get the user name from the stack
+	alias userName R7;
+	userName = [[PTBR + ( (userSP-4) / 512 ) * 2] * 512 + (userSP - 4) % 512 ];
+	
+	alias userid R8;
+	userid = 0;
+	while (userid < 16) do
+		if  ( [USER_TABLE + userid * 2] == userName ) then
+			//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = userid;
+			[ret] = userid;
+			[currentPTE + 9] = 0;
+			SP = [currentPTE + 13];
+			ireturn;
+		endif;
+		userid = userid + 1;
+	endwhile;
+	
+	//return -1: invalid username
+	//[ [PTBR + ( (userSP-1) / 512) * 2] * 512 + (userSP - 1) % 512] = -1;
+	[ret] = -1;
+	[currentPTE + 9] = 0;
+	SP = [currentPTE + 13];
+	ireturn;
+endif;
+//over-Getuid-------------------------------------------------------------------------------

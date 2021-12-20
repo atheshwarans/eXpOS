@@ -1,0 +1,299 @@
+//library
+loadi(63,13);
+loadi(64,14);
+
+//init
+loadi(65,7);
+//loadi(66,8);
+
+//shell
+loadi(67,9);
+loadi(68,10);
+
+//INT 4
+loadi(10,23);
+loadi(11,24);
+
+//INT 5
+loadi(12,25);
+loadi(13,26);
+
+
+//INT 7
+loadi(16,29);
+loadi(17,30);
+
+//INT 8
+loadi(18,31);
+loadi(19,32);
+
+//INT 10
+loadi(22,35);
+loadi(23,36);
+
+//INT 11
+loadi(24,37);
+loadi(25,38);
+
+//INT 12
+loadi(26,39);
+loadi(27,40);
+
+//INT 13
+loadi(28,41);
+loadi(29,42);
+
+//INT 14
+loadi(30,43);
+loadi(31,44);
+
+//INT 15
+loadi(32,45);
+loadi(33,46);
+
+//INT 16
+loadi(34,47);
+loadi(35,48);
+
+//INT 17
+loadi(36,49);
+loadi(37,50);
+
+//exception handler
+loadi(2, 15);
+loadi(3, 16);
+
+//timer interrupt routine
+loadi(4, 17);
+loadi(5, 18);
+
+//scheduler
+loadi(50,63);
+loadi(51,64);
+
+//module 0
+loadi(40,53);
+loadi(41,54);
+
+//module 1
+loadi(42,55);
+loadi(43,56);
+
+//module 2
+loadi(44,57);
+loadi(45,58);
+
+//module 3
+loadi(46,59);
+loadi(47,60);
+
+//module 4
+loadi(48,61);
+loadi(49,62);
+
+//console interrupt
+loadi(8,21);
+loadi(9,22);
+
+//read system call
+loadi(14,27);
+loadi(15,28);
+
+//exec system call
+loadi(20,33);
+loadi(21,34);
+
+
+
+//inode table
+loadi(59,3);
+loadi(60,4);
+
+//disk interrupt routine
+loadi(6,19);
+loadi(7,20);
+
+//diskfreelist
+loadi(61,2);
+
+//rootfile
+loadi(62,5);
+
+//------------------------------------------------
+//init
+//Setting up user area page
+[PROCESS_TABLE + 16 + 11] = 77;
+//PID=1
+//[PROCESS_TABLE + 16 + 1] = -1;
+[PROCESS_TABLE + 16 + 1] = 1;
+//Userid
+[PROCESS_TABLE + 16 + 3] = 1;
+//State
+[PROCESS_TABLE + 16 + 4] = CREATED;
+//KPTR
+[PROCESS_TABLE + 16 + 12] = 0;
+//UPTR
+[PROCESS_TABLE + 16 + 13] = 8*512;
+//PTBR
+[PROCESS_TABLE + 16 + 14] = PAGE_TABLE_BASE + 20;
+//PTLR
+[PROCESS_TABLE + 16 + 15] = 10;
+
+//Setting up page table for init
+PTBR = PAGE_TABLE_BASE + 20;
+R0 = 0;
+while( R0 < 10 ) do
+	[PTBR+R0*2] = -1;
+	[PTBR+R0*2 + 1] = "0000";
+	R0 = R0 + 1;
+endwhile;
+
+//Library
+[PTBR+0] = 63;
+[PTBR+1] = "0100";
+[PTBR+2] = 64;
+[PTBR+3] = "0100";
+
+//Code
+[PTBR+8] = 65;
+[PTBR+9] = "0100";
+
+//Stack
+[PTBR+16] = 66;
+[PTBR+17] = "0110";
+
+[66*512] = [65 * 512 + 1];
+
+//------------------------------------------------
+//shell
+//Setting up user area page
+[PROCESS_TABLE + 16*2 + 11] = 80;
+//PID=2
+//[PROCESS_TABLE + 16 + 1] = -1;
+[PROCESS_TABLE + 16*2 + 1] = 2;
+//PPID
+[PROCESS_TABLE + 16*2 + 2] = 1;
+//Userid
+[PROCESS_TABLE + 16*2 + 3] = 1;
+//State
+[PROCESS_TABLE + 16*2 + 4] = TERMINATED;
+//KPTR
+[PROCESS_TABLE + 16*2 + 12] = 0;
+//UPTR
+[PROCESS_TABLE + 16*2 + 13] = 8*512;
+//PTBR
+[PROCESS_TABLE + 16*2 + 14] = PAGE_TABLE_BASE + 2*20;
+//PTLR
+[PROCESS_TABLE + 16*2 + 15] = 10;
+
+//Setting up page table for shell
+PTBR = PAGE_TABLE_BASE + 20*2;
+R0 = 0;
+while( R0 < 10 ) do
+	[PTBR+R0*2] = -1;
+	[PTBR+R0*2 + 1] = "0000";
+	R0 = R0 + 1;
+endwhile;
+//Library
+[PTBR+0] = 63;
+[PTBR+1] = "0100";
+[PTBR+2] = 64;
+[PTBR+3] = "0100";
+
+//Code
+[PTBR+8] = 67;
+[PTBR+9] = "0100";
+[PTBR+10] = 68;
+[PTBR+11] = "0100";
+
+//Stack
+[PTBR+16] = 78;
+[PTBR+17] = "0110";
+[PTBR+18] = 79;
+[PTBR+19] = "0110";
+
+[78*512] = [67 * 512 + 1];
+
+//------------------------------------------------------------
+
+//Setting up resource table
+alias iter R1;
+iter = 0;
+while (iter<8) do
+	[80 * 512 + 496 + iter] = -1;
+	[80 * 512 + 496 + iter + 1] = -1;
+	iter = iter + 1;
+endwhile;
+
+//intialize disk map table for init and shell
+iter = 0;
+while (iter<10) do
+	[DISK_MAP_TABLE + 10 + iter] = -1;
+	[DISK_MAP_TABLE + 10*2 + iter] = -1;
+	iter = iter + 1;
+endwhile;
+
+//Setting up disk map table for shell
+[DISK_MAP_TABLE + 10*2 + 4] = 67;
+[DISK_MAP_TABLE + 10*2 + 5] = 68;
+
+iter = 3;
+while (iter < 16) do
+    [PROCESS_TABLE + iter * 16 + 1] = -1; 
+    [PROCESS_TABLE + iter * 16 + 4] = TERMINATED;
+    iter=iter+1;
+endwhile;
+
+[TERMINAL_STATUS_TABLE] = 0;
+
+//occupide 0 to 80
+iter = 0;
+while (iter < 81) do
+	[MEMORY_FREE_LIST + iter] = 1;
+	iter = iter + 1;
+endwhile;
+
+//free 81 to 127
+iter = 81;
+while (iter < 128) do
+	[MEMORY_FREE_LIST + iter] = 0;
+	iter = iter + 1;
+endwhile;
+
+iter = 0;
+while (iter < 32) do
+	[SEMAPHORE_TABLE + iter*4] = -1;
+	[SEMAPHORE_TABLE + iter*4 + 1] = 0;
+	iter = iter + 1;
+endwhile;
+
+iter = 0;
+while (iter < 60) do
+	[FILE_STATUS_TABLE + iter*4] = -1;
+	[FILE_STATUS_TABLE + iter*4 + 1] = -1;
+	iter = iter + 1;
+endwhile;
+
+iter = 0;
+while (iter < 32) do
+	[OPEN_FILE_TABLE + iter*4] = -1;
+	[OPEN_FILE_TABLE + iter*4 + 1] = 0;
+	iter = iter + 1;
+endwhile;
+
+
+iter = 0;
+while (iter < 4) do
+	[BUFFER_TABLE + iter*4] = -1;
+	[BUFFER_TABLE + iter*4 + 1] = 0;
+	[BUFFER_TABLE + iter*4 + 2] = -1;
+	iter = iter + 1;
+endwhile;
+
+
+[SYSTEM_STATUS_TABLE + 2] = 47;
+[SYSTEM_STATUS_TABLE + 3] = 0;
+
+[DISK_STATUS_TABLE] = 0;
+
+return;
