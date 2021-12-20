@@ -1,0 +1,30 @@
+int main()
+{
+     decl
+     	 str command;
+     	 int t;
+     enddecl
+     begin
+          command="Shutdown";
+          read(command);
+          while (command!="Shutdown") do
+               t=exposcall("Fork");
+               if (t==-1) then
+                    write("max process limit reached");
+               else
+                    if (t==0) then
+                         t=exposcall("Exec",command);
+                         if (t==-1) then
+                              write("BAD COMMAND");
+                              t=exposcall("Exit");
+                         endif;
+                    else
+                         t=exposcall("Wait",t);
+                    endif;
+               endif;
+               read(command);
+          endwhile;
+          t=exposcall("Shutdown");
+          return 0;
+     end
+}

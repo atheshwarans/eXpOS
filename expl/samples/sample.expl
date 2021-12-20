@@ -1,0 +1,13 @@
+int main()
+{
+     decl
+     	int n;
+     	str a;
+     enddecl
+     begin
+	     n=5;
+	     read(a);
+	     write(a);
+	     return 0;
+     end
+}
